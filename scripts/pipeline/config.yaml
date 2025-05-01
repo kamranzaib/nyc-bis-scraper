@@ -1,0 +1,12 @@
+# Configuration for the data pipeline
+
+paths:
+  raw_data: ./data/raw
+  processed_data: ./data/processed
+  outputs: ./outputs
+
+filters:
+  permits:
+    start_date: '2018-01-01'
+    boroughs: ['BROOKLYN']
+    work_types: ['AL', 'NB', 'DM']

@@ -1,0 +1,56 @@
+#!/bin/bash
+PYTHON="/Users/kamranxeb/Desktop/nyc-bis-scraper/venv/bin/python"
+PROJECT_ROOT="/Users/kamranxeb/Desktop/nyc-bis-scraper"
+
+# Function to find all scripts recursively
+find_scripts() {
+  find "$PROJECT_ROOT" -name "*.py" -not -path "*/venv/*" | sort
+}
+
+# Function to list all available scripts
+list_scripts() {
+  echo "Available scripts:"
+  for script in $(find_scripts); do
+    # Remove project root path and .py extension
+    rel_path=${script#"$PROJECT_ROOT/"}
+    script_name=${rel_path%.py}
+    echo "  - $script_name"
+  done
+}
+
+# If no arguments provided, show usage
+if [ $# -lt 1 ]; then
+  echo "Usage: nycscraper <script_name>"
+  list_scripts
+  exit 1
+fi
+
+SCRIPT="$1"
+# Add .py extension if not present
+if [[ ! $SCRIPT =~ \.py$ ]]; then
+  SCRIPT_WITH_EXT="${SCRIPT}.py"
+else
+  SCRIPT_WITH_EXT="$SCRIPT"
+  SCRIPT="${SCRIPT%.py}"
+fi
+
+# Find matching scripts
+MATCHES=$(find "$PROJECT_ROOT" -path "*${SCRIPT_WITH_EXT}" -not -path "*/venv/*")
+MATCH_COUNT=$(echo "$MATCHES" | grep -v "^$" | wc -l)
+
+if [ "$MATCH_COUNT" -eq 0 ]; then
+  echo "Script  not found"
+  list_scripts
+  exit 1
+elif [ "$MATCH_COUNT" -gt 1 ]; then
+  echo "Multiple matches found for :"
+  echo "$MATCHES" | sed "s|$PROJECT_ROOT/||" | sed "s|^|  |"
+  echo "Please specify the exact path:"
+  echo "  nycscraper scripts/extractors/scrappers/clean_data"
+  exit 1
+else
+  SCRIPT_PATH="$MATCHES"
+  echo "Running $SCRIPT from $(dirname "$SCRIPT_PATH" | sed "s|$PROJECT_ROOT/||")..."
+  $PYTHON "$SCRIPT_PATH" "${@:2}"
+fi
+
