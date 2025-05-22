@@ -1,135 +1,212 @@
 #!/usr/bin/env python
 """
-This script performs additional cleanup on the NYC-BIS-SCRAPER project structure.
-Run this from the project root directory after running the main restructure.py script.
+NYC-BIS-SCRAPER Project Restructure Script
+This script converts the project to a proper Python package structure.
+Run this from the project root directory.
 """
 
 import os
 import shutil
+import sys
 from pathlib import Path
 
 # Define project root
 PROJECT_ROOT = Path.cwd()
 
-def cleanup_root_files():
-    """Move stray files from root to their proper locations"""
+def create_package_structure():
+    """Create the proper package structure"""
+    print("Creating package structure...")
     
-    # Files to move: source -> destination
-    moves = [
-        {"from": "dob_permits_since_2020.jsonl", "to": "data/raw/permits/dob_permits_since_2020.jsonl"},
-        {"from": "final_properties.csv", "to": "data/processed/final_properties.csv"}
-    ]
+    # Create main package directory if it doesn't exist
+    package_dir = PROJECT_ROOT / "nyc_bis_scraper"
+    os.makedirs(package_dir, exist_ok=True)
     
-    for move in moves:
-        source = PROJECT_ROOT / move["from"]
-        target = PROJECT_ROOT / move["to"]
-        
-        if source.exists():
-            # Make sure target directory exists
-            os.makedirs(os.path.dirname(target), exist_ok=True)
+    # Create __init__.py in package directory
+    with open(package_dir / "__init__.py", 'w') as f:
+        f.write('"""NYC BIS Scraper package."""\n')
+    
+    # Move scripts directory into package if it's not already there
+    scripts_source = PROJECT_ROOT / "scripts"
+    scripts_target = package_dir / "scripts"
+    
+    if scripts_source.exists() and not scripts_target.exists():
+        print(f"Moving scripts directory to {scripts_target}")
+        shutil.move(str(scripts_source), str(scripts_target))
+    elif scripts_source.exists() and scripts_target.exists():
+        print("Both source and target scripts directories exist. Merging...")
+        # Copy files from source to target instead of moving the directory
+        for item in scripts_source.glob('**/*'):
+            relative_path = item.relative_to(scripts_source)
+            target_path = scripts_target / relative_path
             
-            # Only move if the target doesn't exist or is different
-            if not target.exists() or os.path.getsize(source) != os.path.getsize(target):
-                try:
-                    shutil.move(str(source), str(target))
-                    print(f"Moved: {move['from']} → {move['to']}")
-                except Exception as e:
-                    print(f"Error moving {move['from']}: {e}")
+            if item.is_dir():
+                os.makedirs(target_path, exist_ok=True)
             else:
-                # Remove source if target already exists and is identical
-                os.remove(source)
-                print(f"Removed duplicate file: {move['from']} (already exists at {move['to']})")
-        else:
-            print(f"Info: Source file not found: {move['from']}")
+                os.makedirs(target_path.parent, exist_ok=True)
+                if not target_path.exists():
+                    shutil.copy2(str(item), str(target_path))
+        # Remove the original scripts directory
+        shutil.rmtree(scripts_source)
+    
+    # Create __init__.py files in all subdirectories of scripts
+    for dirpath, dirnames, filenames in os.walk(scripts_target):
+        dirpath = Path(dirpath)
+        init_file = dirpath / "__init__.py"
+        if not init_file.exists():
+            with open(init_file, 'w') as f:
+                f.write('"""NYC BIS Scraper module."""\n')
+            print(f"Created {init_file.relative_to(PROJECT_ROOT)}")
 
-def promote_outputs_directory():
-    """Move outputs directory from scripts/maps to project root"""
-    
-    # Paths
-    source_html = PROJECT_ROOT / "scripts/maps/outputs/html"
-    source_logs = PROJECT_ROOT / "scripts/maps/outputs/logs"
-    source_outputs = PROJECT_ROOT / "scripts/maps/outputs"
-    
-    target_html = PROJECT_ROOT / "outputs/html"
-    target_logs = PROJECT_ROOT / "outputs/logs"
-    
-    # Create target directories
-    os.makedirs(target_html, exist_ok=True)
-    os.makedirs(target_logs, exist_ok=True)
-    
-    # Move HTML files
-    if source_html.exists():
-        for file in source_html.glob("*"):
-            target_file = target_html / file.name
-            if not target_file.exists():
-                try:
-                    shutil.move(str(file), str(target_file))
-                    print(f"Moved: {file.relative_to(PROJECT_ROOT)} → outputs/html/{file.name}")
-                except Exception as e:
-                    print(f"Error moving {file.name}: {e}")
-    
-    # Move log files
-    if source_logs.exists():
-        for file in source_logs.glob("*"):
-            target_file = target_logs / file.name
-            if not target_file.exists():
-                try:
-                    shutil.move(str(file), str(target_file))
-                    print(f"Moved: {file.relative_to(PROJECT_ROOT)} → outputs/logs/{file.name}")
-                except Exception as e:
-                    print(f"Error moving {file.name}: {e}")
-    
-    # Remove the now-empty outputs directory in scripts/maps
-    if source_outputs.exists():
-        try:
-            shutil.rmtree(source_outputs)
-            print(f"Removed directory: scripts/maps/outputs/")
-        except Exception as e:
-            print(f"Error removing scripts/maps/outputs/: {e}")
+    # Create etl directory structure at project root
+    etl_dir = PROJECT_ROOT / "etl"
+    subdirs = ["extract", "transform", "load", "pipeline"]
+    for subdir in subdirs:
+        subdir_path = etl_dir / subdir
+        os.makedirs(subdir_path, exist_ok=True)
+        init_file = subdir_path / "__init__.py"
+        if not init_file.exists():
+            with open(init_file, 'w') as f:
+                f.write(f'"""ETL {subdir} module."""\n')
+            print(f"Created {init_file.relative_to(PROJECT_ROOT)}")
+    # Create __init__.py in etl root folder
+    etl_init = etl_dir / "__init__.py"
+    if not etl_init.exists():
+        with open(etl_init, 'w') as f:
+            f.write('"""ETL package."""\n')
+        print(f"Created {etl_init.relative_to(PROJECT_ROOT)}")
 
-def remove_legacy_files():
-    """Remove files that have been replaced by versions in scripts/extractors"""
+    # Create main run.py in the package
+    run_py_path = package_dir / "run.py"
+    if not run_py_path.exists():
+        with open(run_py_path, 'w') as f:
+            f.write('''#!/usr/bin/env python
+"""
+NYC-BIS-SCRAPER main runner
+"""
+
+from nyc_bis_scraper.scripts.pipeline.run_pipeline import main
+
+def run():
+    """Entry point for the application"""
+    main()
+
+if __name__ == "__main__":
+    run()
+''')
+        print(f"Created {run_py_path.relative_to(PROJECT_ROOT)}")
     
-    # Files to remove
-    legacy_files = [
-        "scraper.py",  # Replaced by scripts/extractors/scraper.py
-    ]
+    # Create launcher run.py in project root
+    root_run_py = PROJECT_ROOT / "run.py"
+    if not root_run_py.exists():
+        with open(root_run_py, 'w') as f:
+            f.write('''#!/usr/bin/env python
+"""
+NYC-BIS-SCRAPER main runner (launcher)
+"""
+
+from nyc_bis_scraper.run import run
+
+if __name__ == "__main__":
+    run()
+''')
+        print(f"Created {root_run_py.relative_to(PROJECT_ROOT)}")
+
+def create_setup_py():
+    """Create or update setup.py"""
+    print("Creating setup.py...")
     
-    # Archive directory (if you decide to archive instead of delete)
-    archive_dir = PROJECT_ROOT / "archive"
+    setup_py_path = PROJECT_ROOT / "setup.py"
     
-    # Check if we should archive or delete
-    archive_mode = False  # Set to True if you want to archive instead of delete
+    with open(setup_py_path, 'w') as f:
+        f.write('''from setuptools import setup, find_packages
+import os
+
+# Read requirements from requirements.txt if it exists
+requirements = []
+if os.path.exists('requirements.txt'):
+    with open('requirements.txt') as f:
+        requirements = f.read().splitlines()
+
+setup(
+    name="nyc-bis-scraper",
+    version="0.1.0",
+    packages=find_packages(),
+    description="NYC BIS Scraper Tool",
+    install_requires=requirements,
+    entry_points={
+        "console_scripts": [
+            "nyc-bis-scraper=nyc_bis_scraper.run:run",
+        ],
+    },
+)
+''')
+    print(f"Created {setup_py_path.relative_to(PROJECT_ROOT)}")
+
+def fix_imports():
+    """Fix imports in Python files"""
+    print("Fixing imports in Python files...")
     
-    if archive_mode:
-        os.makedirs(archive_dir, exist_ok=True)
+    package_dir = PROJECT_ROOT / "nyc_bis_scraper"
     
-    # Process each file
-    for file in legacy_files:
-        file_path = PROJECT_ROOT / file
+    # Get all Python files in the package
+    py_files = list(package_dir.glob('**/*.py'))
+    
+    for py_file in py_files:
+        with open(py_file, 'r') as f:
+            content = f.read()
         
-        if file_path.exists():
-            if archive_mode:
-                # Move to archive
-                try:
-                    shutil.move(str(file_path), str(archive_dir / file_path.name))
-                    print(f"Archived: {file} → archive/{file_path.name}")
-                except Exception as e:
-                    print(f"Error archiving {file}: {e}")
-            else:
-                # Delete
-                try:
-                    os.remove(file_path)
-                    print(f"Removed: {file}")
-                except Exception as e:
-                    print(f"Error removing {file}: {e}")
-        else:
-            print(f"Info: Legacy file not found: {file}")
+        # Skip __init__.py files
+        if py_file.name == "__init__.py":
+            continue
+        
+        # Replace old imports with new package-based imports
+        modified_content = content
+        
+        # Fix imports from scripts.*
+        modified_content = modified_content.replace(
+            'from scripts.', 'from nyc_bis_scraper.scripts.')
+        modified_content = modified_content.replace(
+            'import scripts.', 'import nyc_bis_scraper.scripts.')
+        
+        # Fix imports from etl.*
+        modified_content = modified_content.replace(
+            'from etl.', 'from etl.')
+        modified_content = modified_content.replace(
+            'import etl.', 'import etl.')
+        
+        # If content was modified, write it back
+        if modified_content != content:
+            with open(py_file, 'w') as f:
+                f.write(modified_content)
+            print(f"Fixed imports in {py_file.relative_to(PROJECT_ROOT)}")
 
-def create_gitignore():
-    """Create a useful .gitignore file"""
+def install_package():
+    """Install the package in development mode"""
+    print("Installing package in development mode...")
     
-    gitignore_content = """# Python
+    try:
+        # Uninstall existing package first
+        os.system(f"{sys.executable} -m pip uninstall -y nyc-bis-scraper")
+        
+        # Install in development mode
+        os.system(f"{sys.executable} -m pip install -e .")
+        print("Package installed successfully!")
+    except Exception as e:
+        print(f"Error installing package: {e}")
+
+def cleanup_project():
+    """Perform additional project cleanup"""
+    print("Performing project cleanup...")
+    
+    # Clean up egg-info
+    for item in PROJECT_ROOT.glob('*.egg-info'):
+        shutil.rmtree(item)
+        print(f"Removed {item.name}")
+    
+    # Create gitignore if it doesn't exist
+    gitignore_path = PROJECT_ROOT / ".gitignore"
+    if not gitignore_path.exists():
+        gitignore_content = """# Python
 __pycache__/
 *.py[cod]
 *$py.class
@@ -177,41 +254,74 @@ Thumbs.db
 outputs/html/*.html
 *.log
 """
-    
-    gitignore_path = PROJECT_ROOT / ".gitignore"
-    
-    # Only create if it doesn't exist
-    if not gitignore_path.exists():
         with open(gitignore_path, 'w') as f:
             f.write(gitignore_content)
-        print("Created: .gitignore")
-    else:
-        print("Info: .gitignore already exists")
+        print("Created .gitignore")
+
+    # Create .env file with PYTHONPATH
+    env_path = PROJECT_ROOT / ".env"
+    if not env_path.exists():
+        with open(env_path, 'w') as f:
+            f.write(f"PYTHONPATH={PROJECT_ROOT}\n")
+        print("Created .env file with PYTHONPATH set to project root")
+        print("Remember to source the .env file before running your project, e.g.:")
+        print("  source .env")
+
+def test_package():
+    """Test the package installation"""
+    print("Testing package installation...")
+    
+    test_script = PROJECT_ROOT / "test_import.py"
+    with open(test_script, 'w') as f:
+        f.write('''
+try:
+    import nyc_bis_scraper
+    print("\\033[92mSuccess: Imported nyc_bis_scraper package!\\033[0m")
+    print(f"Package located at: {nyc_bis_scraper.__file__}")
+    
+    from nyc_bis_scraper.scripts.pipeline.run_pipeline import main
+    print("\\033[92mSuccess: Imported main function from pipeline!\\033[0m")
+    
+    print("\\nPackage is working correctly!")
+except ImportError as e:
+    print(f"\\033[91mImport error: {e}\\033[0m")
+    
+    import sys
+    print("\\nPython path:")
+    for p in sys.path:
+        print(f"  {p}")
+''')
+    
+    # Run the test script
+    print("\nRunning import test...")
+    os.system(f"{sys.executable} {test_script}")
 
 def main():
-    print("Starting additional project cleanup...")
+    print("=" * 80)
+    print("NYC-BIS-SCRAPER Project Restructure Script")
+    print("=" * 80)
+    print("This script will convert your project to a proper Python package.")
+    print("Current directory:", PROJECT_ROOT)
+    print("=" * 80)
     
-    # Run cleanup tasks
-    cleanup_root_files()
-    promote_outputs_directory()
-    remove_legacy_files()
-    create_gitignore()
+    input("Press Enter to continue (Ctrl+C to cancel)...")
     
-    # Clean up empty directories
-    print("\nRemoving empty directories...")
-    for root, dirs, files in os.walk(PROJECT_ROOT, topdown=False):
-        for dir in dirs:
-            dir_path = os.path.join(root, dir)
-            if not os.listdir(dir_path) and "venv" not in dir_path:
-                try:
-                    os.rmdir(dir_path)
-                    print(f"Removed empty directory: {os.path.relpath(dir_path, PROJECT_ROOT)}")
-                except:
-                    pass  # Directory not empty or permission error
+    # Execute restructuring steps
+    create_package_structure()
+    create_setup_py()
+    fix_imports()
+    cleanup_project()
+    install_package()
+    test_package()
     
-    print("\nProject cleanup complete!")
-    print("\nYour project should now have a clean structure following best practices.")
-    print("Don't forget to update imports in your Python files if needed.")
+    print("\n" + "=" * 80)
+    print("Project restructuring complete!")
+    print("=" * 80)
+    print("Your project is now organized as a proper Python package.")
+    print("You can run your project using:")
+    print("  - python run.py")
+    print("  - nyc-bis-scraper (if Python scripts directory is in your PATH)")
+    print("=" * 80)
 
 if __name__ == "__main__":
     main()

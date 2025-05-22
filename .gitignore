@@ -50,3 +50,5 @@ outputs/html/*.html
 # maps
 /outputs/
 /data/
+
+**/.claude/settings.local.json
